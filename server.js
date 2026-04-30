@@ -3,128 +3,73 @@ const http = require("http");
 const socketIo = require("socket.io");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static("public"));
 
-const SECRET = "supersecretkey"; // change in production
+const SECRET = "secretkey";
 
-// In-memory storage (replace with DB later)
+// simple memory storage
 let users = [];
-let messages = [];
 
-/* =========================
-   🔐 AUTH ROUTES
-========================= */
+/* ========= AUTH ========= */
 
-// REGISTER
+// Register
 app.post("/register", async (req, res) => {
     const { username, password } = req.body;
 
-    if (!username || !password) {
-        return res.status(400).json({ message: "All fields required" });
-    }
-
-    const exists = users.find(u => u.username === username);
-    if (exists) {
-        return res.status(400).json({ message: "User already exists" });
-    }
-
     const hashed = await bcrypt.hash(password, 10);
+    users.push({ username, password: hashed });
 
-    users.push({
-        username,
-        password: hashed
-    });
-
-    res.json({ message: "User registered successfully" });
+    res.json({ message: "Registered" });
 });
 
-// LOGIN
+// Login
 app.post("/login", async (req, res) => {
     const { username, password } = req.body;
 
     const user = users.find(u => u.username === username);
-    if (!user) {
-        return res.status(400).json({ message: "User not found" });
-    }
+    if (!user) return res.status(400).json({ message: "User not found" });
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-        return res.status(400).json({ message: "Invalid password" });
-    }
+    if (!valid) return res.status(400).json({ message: "Wrong password" });
 
-    const token = jwt.sign({ username }, SECRET, { expiresIn: "1d" });
+    const token = jwt.sign({ username }, SECRET);
 
-    res.json({
-        token,
-        username
-    });
+    res.json({ token, username });
 });
 
-/* =========================
-   🔌 SOCKET AUTH
-========================= */
+/* ========= SOCKET ========= */
 
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
 
-    if (!token) {
-        return next(new Error("No token"));
-    }
-
     try {
-        const decoded = jwt.verify(token, SECRET);
-        socket.username = decoded.username;
+        const user = jwt.verify(token, SECRET);
+        socket.username = user.username;
         next();
-    } catch (err) {
-        return next(new Error("Unauthorized"));
+    } catch {
+        next(new Error("Unauthorized"));
     }
 });
-
-/* =========================
-   💬 SOCKET EVENTS
-========================= */
 
 io.on("connection", (socket) => {
-    console.log("User connected:", socket.username);
+    console.log("Connected:", socket.username);
 
-    // Send old messages (for persistence simulation)
-    socket.emit("load messages", messages);
-
-    // Receive new code snippet
-    socket.on("chat message", (data) => {
-        const msgData = {
+    socket.on("chat message", (msg) => {
+        io.emit("chat message", {
             user: socket.username,
-            title: data.title || "",
-            message: data.message,
-            lang: data.lang || "text",
-            time: new Date().toLocaleTimeString()
-        };
-
-        // Save message
-        messages.push(msgData);
-
-        // Broadcast
-        io.emit("chat message", msgData);
-    });
-
-    socket.on("disconnect", () => {
-        console.log("User disconnected:", socket.username);
+            message: msg
+        });
     });
 });
 
-/* =========================
-   🚀 START SERVER
-========================= */
+/* ========= START ========= */
 
-const PORT = 3000;
-
-server.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
+server.listen(3000, () => {
+    console.log("Server running on http://localhost:3000");
 });
