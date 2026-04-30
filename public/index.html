@@ -2,85 +2,191 @@
 <html>
 <head>
     <title>Chat App</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            display: flex;
+            height: 100vh;
+            background: #ece5dd;
+        }
+
+        #users {
+            width: 220px;
+            background: #2f3136;
+            color: white;
+            padding: 10px;
+        }
+
+        #users h3 {
+            margin-top: 0;
+        }
+
+        #userList li {
+            margin: 5px 0;
+        }
+
+        #chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .msg {
+            max-width: 60%;
+            padding: 10px;
+            margin: 5px;
+            border-radius: 10px;
+            word-wrap: break-word;
+        }
+
+        .me {
+            align-self: flex-end;
+            background: #dcf8c6;
+        }
+
+        .other {
+            align-self: flex-start;
+            background: white;
+        }
+
+        .username {
+            font-size: 12px;
+            font-weight: bold;
+            color: gray;
+        }
+
+        #input-area {
+            display: flex;
+            padding: 10px;
+            background: #f0f0f0;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 20px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            margin-left: 10px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 20px;
+            background: #25d366;
+            color: white;
+            cursor: pointer;
+        }
+
+        #fileInput {
+            display: none;
+        }
+    </style>
 </head>
 <body>
 
-<h2>Login / Register</h2>
+<div id="users">
+    <h3>Online</h3>
+    <ul id="userList"></ul>
+</div>
 
-<input id="username" placeholder="Username">
-<input id="password" type="password" placeholder="Password">
+<div id="chat-container">
+    <div id="chat"></div>
 
-<button onclick="register()">Register</button>
-<button onclick="login()">Login</button>
-
-<hr>
-
-<div id="chat" style="display:none;">
-    <h3>Chat</h3>
-    <div id="messages"></div>
-    <input id="msg" placeholder="message">
-    <button onclick="send()">Send</button>
+    <div id="input-area">
+        <input id="msg" placeholder="Type message..." />
+        <input type="file" id="fileInput" />
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="uploadFile()">📎</button>
+    </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-
 <script>
-let socket, token, username;
+    const socket = io();
+    const username = prompt("Enter your name:");
 
-async function register() {
-    await fetch("/register", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            username: usernameInput.value,
-            password: passwordInput.value
-        })
-    });
-    alert("Registered");
-}
+    socket.emit("join", username);
 
-async function login() {
-    const res = await fetch("/login", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            username: usernameInput.value,
-            password: passwordInput.value
-        })
-    });
+    const chat = document.getElementById("chat");
+    const userList = document.getElementById("userList");
 
-    const data = await res.json();
+    function addMessage(content, sender) {
+        const div = document.createElement("div");
+        div.classList.add("msg");
 
-    if (!data.token) {
-        alert(data.message);
-        return;
+        if (sender === username) {
+            div.classList.add("me");
+        } else {
+            div.classList.add("other");
+        }
+
+        div.innerHTML = `<div class="username">${sender}</div>${content}`;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
     }
 
-    token = data.token;
-    username = data.username;
-
-    document.getElementById("chat").style.display = "block";
-
-    socket = io({
-        auth: { token }
+    socket.on("message", (msg) => {
+        const parts = msg.split(": ");
+        const sender = parts[0];
+        const content = parts.slice(1).join(": ");
+        addMessage(content, sender);
     });
 
-    socket.on("chat message", (data) => {
-        const div = document.createElement("div");
-        div.textContent = data.user + ": " + data.message;
-        messages.appendChild(div);
+    socket.on("userList", (users) => {
+        userList.innerHTML = "";
+        users.forEach(user => {
+            const li = document.createElement("li");
+            li.textContent = user;
+            userList.appendChild(li);
+        });
     });
-}
 
-function send() {
-    socket.emit("chat message", msg.value);
-    msg.value = "";
-}
+    socket.on("file", (data) => {
+        const fileLink = `<a href="${data.fileData}" download="${data.fileName}">📁 ${data.fileName}</a>`;
+        addMessage(fileLink, data.username);
+    });
 
-const usernameInput = document.getElementById("username");
-const passwordInput = document.getElementById("password");
-const msg = document.getElementById("msg");
-const messages = document.getElementById("messages");
+    function sendMessage() {
+        const input = document.getElementById("msg");
+        if (input.value.trim() !== "") {
+            socket.emit("chatMessage", input.value);
+            input.value = "";
+        }
+    }
+
+    function uploadFile() {
+        document.getElementById("fileInput").click();
+    }
+
+    document.getElementById("fileInput").addEventListener("change", function() {
+        const file = this.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function() {
+            socket.emit("file", {
+                fileName: file.name,
+                fileData: reader.result
+            });
+        };
+
+        if (file) {
+            reader.readAsDataURL(file);
+        }
+    });
+
+    document.getElementById("msg").addEventListener("keypress", function(e) {
+        if (e.key === "Enter") sendMessage();
+    });
 </script>
 
 </body>
