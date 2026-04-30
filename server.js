@@ -34,6 +34,13 @@ io.on("connection", (socket) => {
             io.emit("userList", Object.values(users));
         }
     });
+socket.on("file", (data) => {
+    io.emit("file", {
+        username: users[socket.id],
+        fileName: data.fileName,
+        fileData: data.fileData
+    });
+});
 });
 
 server.listen(3000, () => {
