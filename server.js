@@ -13,22 +13,23 @@ app.use(express.static("public"));
 
 const SECRET = "secretkey";
 
-// simple memory storage
 let users = [];
 
-/* ========= AUTH ========= */
-
-// Register
+// REGISTER
 app.post("/register", async (req, res) => {
     const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ message: "Enter username & password" });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     users.push({ username, password: hashed });
 
-    res.json({ message: "Registered" });
+    res.json({ message: "Registered successfully" });
 });
 
-// Login
+// LOGIN
 app.post("/login", async (req, res) => {
     const { username, password } = req.body;
 
@@ -43,20 +44,22 @@ app.post("/login", async (req, res) => {
     res.json({ token, username });
 });
 
-/* ========= SOCKET ========= */
-
+// SOCKET AUTH
 io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
+    const token = socket.handshake.auth?.token;
+
+    if (!token) return next(new Error("No token"));
 
     try {
-        const user = jwt.verify(token, SECRET);
-        socket.username = user.username;
+        const decoded = jwt.verify(token, SECRET);
+        socket.username = decoded.username;
         next();
     } catch {
-        next(new Error("Unauthorized"));
+        next(new Error("Invalid token"));
     }
 });
 
+// SOCKET
 io.on("connection", (socket) => {
     console.log("Connected:", socket.username);
 
@@ -68,8 +71,6 @@ io.on("connection", (socket) => {
     });
 });
 
-/* ========= START ========= */
-
 server.listen(3000, () => {
-    console.log("Server running on http://localhost:3000");
+    console.log("Server running at http://localhost:3000");
 });
